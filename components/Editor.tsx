@@ -228,16 +228,14 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       setIsSuggestingChords(true);
 
       try {
-          const { GoogleGenAI } = await import('@google/genai');
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const { GoogleGenerativeAI } = await import('@google/genai');
+          const ai = new GoogleGenerativeAI(process.env.API_KEY as string);
+          const model = ai.getGenerativeModel({ model: "gemini-pro" });
           const prompt = `Eres un experto músico guitarrista. Analiza la siguiente letra de canción y añade acordes de guitarra en formato ChordPro (ej: [G]palabra). Retorna únicamente la letra con los acordes insertados. No añadas explicaciones, títulos o comentarios adicionales. La letra es:\n\n${selectedText}`;
           
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: prompt,
-          });
-          
-          const suggestedText = response.text;
+          const result = await model.generateContent(prompt);
+          const generationResponse = await result.response;
+          const suggestedText = generationResponse.text();
 
           const newContent = 
               content.substring(0, selectionStart) + 
