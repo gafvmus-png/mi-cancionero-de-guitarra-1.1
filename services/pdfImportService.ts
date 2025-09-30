@@ -95,7 +95,7 @@ const separateConcatenatedChords = (line: string): string => {
 
 // Main import function
 export const importSongFromPdf = async (file: File): Promise<Partial<Song>> => {
-  const pdfjsLib = await import('pdfjs-dist');
+  const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.min.mjs');
 
   // Configure the worker provided by a CDN
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.worker.min.mjs';
