@@ -440,15 +440,15 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           };
           
           const drawChordDiagramPDF = (pdfInstance, name, shape, x, y) => {
-            const FRET_COUNT = 5, STRING_COUNT = 6, FRET_HEIGHT = 6, STRING_SPACING = 4, DOT_RADIUS = 1;
+            const FRET_COUNT = 5, STRING_COUNT = 6, FRET_HEIGHT = 8, STRING_SPACING = 6, DOT_RADIUS = 1.5;
             const diagramWidth = (STRING_COUNT - 1) * STRING_SPACING;
             const diagramHeight = FRET_COUNT * FRET_HEIGHT;
             pdfInstance.setFont('helvetica', 'bold');
-            pdfInstance.setFontSize(8);
+            pdfInstance.setFontSize(10);
             pdfInstance.text(name, x + diagramWidth / 2, y - 2, { align: 'center' });
             const startX = x, startY = y + 4;
             pdfInstance.setFont('helvetica', 'normal');
-            pdfInstance.setFontSize(6);
+            pdfInstance.setFontSize(8);
             if (shape.baseFret > 1) pdfInstance.text(\`\${shape.baseFret}\`, startX - 2, startY + FRET_HEIGHT * 0.8, { align: 'right' });
             pdfInstance.setLineWidth(0.2);
             for (let i = 0; i <= FRET_COUNT; i++) pdfInstance.line(startX, startY + i * FRET_HEIGHT, startX + diagramWidth, startY + i * FRET_HEIGHT);
@@ -483,7 +483,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
             }
             shape.positions.forEach((pos, i) => {
               const stringX = startX + i * STRING_SPACING;
-              if (pos === 'x') pdfInstance.text('x', stringX - 0.5, startY - 1);
+              if (pos === 'x') pdfInstance.text('x', stringX, startY - 1, { align: 'center' });
               else if (pos === 0) pdfInstance.circle(stringX, startY - 2, DOT_RADIUS - 0.2, 'S');
               else if (typeof pos === 'number' && pos >= shape.baseFret) {
                 if (barre && pos === barre.fret) return;
@@ -628,7 +628,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               pdf.text(UI_STRINGS.CHORDS_TITLE, x, y);
               y += 20;
 
-              const diagramBlockWidth = 50, diagramBlockHeight = 60;
+              const diagramBlockWidth = 65, diagramBlockHeight = 75;
               const diagramsPerLine = Math.max(1, Math.floor(colWidth / diagramBlockWidth));
               let diagramCountInLine = 0;
 
