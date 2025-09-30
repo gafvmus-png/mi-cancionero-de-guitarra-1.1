@@ -1,8 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
 import { Song } from '../types';
-
-// Configure the worker provided by a CDN
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.worker.min.mjs';
 
 // Heuristic check for a chord-like string
 const isChord = (str: string): boolean => {
@@ -99,6 +95,11 @@ const separateConcatenatedChords = (line: string): string => {
 
 // Main import function
 export const importSongFromPdf = async (file: File): Promise<Partial<Song>> => {
+  const pdfjsLib = await import('pdfjs-dist');
+
+  // Configure the worker provided by a CDN
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.5.136/pdf.worker.min.mjs';
+
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
   
