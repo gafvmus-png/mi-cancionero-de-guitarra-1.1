@@ -76,6 +76,9 @@ const CHORD_FORMULAS = new Map<string, number[]>([
     ['5', [0, 7]], // Power Chord
     ['dim', [0, 3, 6]],
     ['aug', [0, 4, 8]],
+    ['7(b5)', [0, 4, 6, 10]],
+    ['7(#5)', [0, 4, 8, 10]], // Also known as 7aug
+    ['sus4(b5)', [0, 5, 6]],
     ['m7b5', [0, 3, 6, 10]], // Half-diminished
     ['dim7', [0, 3, 6, 9]],
     ['6', [0, 4, 7, 9]],
