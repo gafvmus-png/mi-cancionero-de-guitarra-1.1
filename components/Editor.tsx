@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Song, ToastData, UserPrefs, Setlist, ChordShape } from '../types';
 import { transposeChordPro, extractUniqueChords, parseChordPro } from '../services/chordproService';
@@ -11,6 +12,7 @@ import { UI_STRINGS } from '../constants/es';
 import { useDebounce } from '../hooks/useDebounce';
 import { ChordDisplay } from './ChordDisplay';
 import { CHORD_DATA } from '../services/chordService';
+import { GoogleGenAI } from '@google/genai';
 
 interface EditorProps {
   song: Song;
@@ -160,7 +162,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
     if (parsed.key && parsed.key !== songKey) {
         setSongKey(parsed.key);
     }
-  }, [debouncedContent]);
+  }, [debouncedContent, songKey]);
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -256,14 +258,15 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       setIsSuggestingChords(true);
 
       try {
-          const { GoogleGenerativeAI } = await import('@google/genai');
-          const ai = new GoogleGenerativeAI(process.env.API_KEY as string);
-          const model = ai.getGenerativeModel({ model: "gemini-pro" });
+          const ai = new GoogleGenAI({apiKey: process.env.API_KEY as string});
           const prompt = `Eres un experto músico guitarrista. Analiza la siguiente letra de canción y añade acordes de guitarra en formato ChordPro (ej: [G]palabra). Retorna únicamente la letra con los acordes insertados. No añadas explicaciones, títulos o comentarios adicionales. La letra es:\n\n${selectedText}`;
           
-          const result = await model.generateContent(prompt);
-          const generationResponse = await result.response;
-          const suggestedText = generationResponse.text();
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: prompt,
+          });
+          
+          const suggestedText = response.text;
 
           const newContent = 
               content.substring(0, selectionStart) + 
@@ -649,7 +652,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           }
           
           // --- DIAGRAMS ---
-          const availableChords = extractUniqueChords(content).filter(c => ALL_CHORD_DATA[c]);
+          const availableChords = extractUniqueChords(content).filter(c => ALL_CHORD_DATA[c.split('/')[0]]);
           if (includeDiagrams && availableChords.length > 0) {
               y += 10;
               checkPageBreak(80);
@@ -664,14 +667,15 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               let diagramCountInLine = 0;
 
               for (const chordName of availableChords) {
-                  if (ALL_CHORD_DATA[chordName]) {
+                  const baseChordName = chordName.split('/')[0];
+                  if (ALL_CHORD_DATA[baseChordName]) {
                       if (diagramCountInLine >= diagramsPerLine) {
                           y += diagramBlockHeight;
                           diagramCountInLine = 0;
                       }
                       checkPageBreak(diagramBlockHeight);
                       const currentX = x + (diagramCountInLine * diagramBlockWidth);
-                      drawChordDiagramPDF(pdf, chordName, ALL_CHORD_DATA[chordName], currentX, y);
+                      drawChordDiagramPDF(pdf, chordName, ALL_CHORD_DATA[baseChordName], currentX, y);
                       diagramCountInLine++;
                   }
               }
@@ -763,162 +767,150 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
         </div>
       )}
       <header className="p-4 border-b border-slate-700 bg-slate-800/50">
-        <div className="flex flex-col md:flex-row gap-4 items-start">
+        <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-grow">
                 <input
-                  type="text"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_TITLE && setTitle('')}
-                  onBlur={e => e.target.value.trim() === '' && setTitle(UI_STRINGS.NEW_SONG_TITLE)}
-                  placeholder={UI_STRINGS.TITLE_PLACEHOLDER}
-                  readOnly={isReadOnly}
-                  className={`w-full px-3 py-2 text-lg font-bold bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
+                    type="text"
+                    value={title}
+                    onChange={e => !isReadOnly && setTitle(e.target.value)}
+                    readOnly={isReadOnly}
+                    placeholder={UI_STRINGS.TITLE_PLACEHOLDER}
+                    className="w-full text-2xl font-bold bg-transparent focus:outline-none focus:ring-0 ring-inset ring-sky-500 rounded-md -ml-2 px-2"
+                />
+                <input
+                    type="text"
+                    value={artist}
+                    onChange={e => !isReadOnly && setArtist(e.target.value)}
+                    readOnly={isReadOnly}
+                    placeholder={UI_STRINGS.ARTIST_PLACEHOLDER}
+                    className="w-full text-md text-slate-400 bg-transparent focus:outline-none focus:ring-0 ring-inset ring-sky-500 rounded-md -ml-2 px-2"
                 />
             </div>
-            <div className="w-full md:w-auto flex gap-4">
+             <div className="flex items-center gap-2">
+                <label htmlFor="song-key" className="text-sm font-semibold text-slate-400">{UI_STRINGS.KEY_LABEL}:</label>
                 <input
-                  type="text"
-                  value={artist}
-                  onChange={e => setArtist(e.target.value)}
-                  onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_ARTIST && setArtist('')}
-                  onBlur={e => e.target.value.trim() === '' && setArtist(UI_STRINGS.NEW_SONG_ARTIST)}
-                  placeholder={UI_STRINGS.ARTIST_PLACEHOLDER}
-                  readOnly={isReadOnly}
-                  className={`w-full md:w-48 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
+                    id="song-key"
+                    type="text"
+                    value={songKey}
+                    onChange={e => !isReadOnly && setSongKey(e.target.value)}
+                    readOnly={isReadOnly}
+                    placeholder={UI_STRINGS.KEY_PLACEHOLDER}
+                    className="w-20 px-2 py-1 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
-                <input
-                  type="text"
-                  value={songKey}
-                  onChange={e => setSongKey(e.target.value)}
-                  placeholder={UI_STRINGS.KEY_PLACEHOLDER}
-                  readOnly={isReadOnly}
-                  className={`w-24 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 font-semibold ${isReadOnly ? 'cursor-default' : ''}`}
-                />
+            </div>
+            <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleSave} 
+                  disabled={!hasChanges || isReadOnly}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-500 transition-colors shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 focus:ring-offset-slate-900 disabled:bg-slate-600 disabled:cursor-not-allowed"
+                >
+                  <SaveIcon />
+                  {hasChanges ? UI_STRINGS.SAVE_CHANGES_BUTTON : UI_STRINGS.SAVED_BUTTON}
+                </button>
+                <button
+                  onClick={() => setPerformanceMode(true)}
+                  className="p-2.5 text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-colors shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                  aria-label={UI_STRINGS.PERFORMANCE_MODE_BUTTON}
+                  title={UI_STRINGS.PERFORMANCE_MODE_BUTTON}
+                >
+                  <MusicIcon />
+                </button>
             </div>
         </div>
       </header>
-      
-      <div className="p-2 bg-slate-900/30 border-b border-slate-700 flex items-center gap-2 flex-wrap">
-        <button onClick={handleSave} disabled={!hasChanges || isReadOnly} className={`flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition-colors ${hasChanges && !isReadOnly ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}>
-          <SaveIcon /> {hasChanges ? UI_STRINGS.SAVE_CHANGES_BUTTON : UI_STRINGS.SAVED_BUTTON}
-        </button>
-        <button onClick={handleOpenChordPicker} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            <ChordIcon /> {UI_STRINGS.INSERT_CHORD_BUTTON}
-        </button>
-        <button onClick={handleSuggestChords} disabled={isSuggestingChords || isReadOnly} title={UI_STRINGS.SUGGEST_CHORDS_TOOLTIP} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg transition-colors disabled:bg-purple-800 disabled:cursor-wait">
-            {isSuggestingChords ? <SpinnerIcon /> : <MagicWandIcon />} {isSuggestingChords ? UI_STRINGS.SUGGESTING_CHORDS_BUTTON : UI_STRINGS.SUGGEST_CHORDS_BUTTON}
-        </button>
-        <button onClick={() => setPDFModalOpen(true)} disabled={isExporting} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors disabled:bg-red-800 disabled:cursor-wait">
-            {isExporting ? <SpinnerIcon /> : <PDFIcon />} {isExporting ? UI_STRINGS.EXPORTING_PDF_BUTTON : UI_STRINGS.EXPORT_PDF_BUTTON}
-        </button>
-        <button onClick={handleExportSongJson} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
-          <ExportIcon /> {UI_STRINGS.EXPORT_JSON_BUTTON}
-        </button>
-        <div className="h-6 w-px bg-slate-700 mx-2"></div>
-        <button onClick={() => setTransposeSteps(prev => prev + 1)} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><TransposeUpIcon/> {UI_STRINGS.TRANSPOSE_UP_BUTTON}</button>
-        <button onClick={() => setTransposeSteps(prev => prev - 1)} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><TransposeDownIcon/> {UI_STRINGS.TRANSPOSE_DOWN_BUTTON}</button>
-        {transposeSteps !== 0 && (
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-semibold text-sky-300">
-                {transposeSteps > 0 ? '+' : ''}{transposeSteps}
-              </span>
-              <button onClick={() => setTransposeSteps(0)} className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-600 rounded-full transition-colors" title={UI_STRINGS.RESET_TRANSPOSE_BUTTON_TITLE}>
-                <RotateCcwIcon />
-              </button>
-            </div>
-          )}
-        <div className="flex items-center rounded-lg bg-slate-700 ml-2">
-            <button onClick={() => onUpdatePrefs({ notation: 'sharps'})} className={`px-3 py-2 text-sm font-bold rounded-l-lg transition-colors ${prefs.notation === 'sharps' ? 'bg-sky-600 text-white' : 'bg-slate-700 hover:bg-slate-600'}`}>♯</button>
-            <button onClick={() => onUpdatePrefs({ notation: 'flats'})} className={`px-3 py-2 text-sm font-bold rounded-r-lg transition-colors ${prefs.notation === 'flats' ? 'bg-sky-600 text-white' : 'bg-slate-700 hover:bg-slate-600'}`}>♭</button>
-        </div>
-        <div className="h-6 w-px bg-slate-700 mx-2"></div>
-        <button onClick={() => setHideChords(prev => !prev)} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors" title={UI_STRINGS.TOGGLE_CHORDS_VIEW_TITLE}>{hideChords ? <EyeOffIcon/> : <EyeIcon/>} {hideChords ? UI_STRINGS.SHOW_CHORDS_BUTTON : UI_STRINGS.HIDE_CHORDS_BUTTON}</button>
-        <button onClick={() => setPerformanceMode(true)} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"><MusicIcon /> {UI_STRINGS.PERFORMANCE_MODE_BUTTON}</button>
-      </div>
-
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
-        <div className="flex flex-col gap-2 h-full overflow-hidden">
-            <div className="px-4 py-2 bg-slate-800/50 rounded-lg border border-slate-700">
-                <h4 className="text-xs font-semibold uppercase text-slate-400 mb-2">
-                    {isUsingDefaultChords ? UI_STRINGS.COMMON_CHORDS_TITLE : UI_STRINGS.CHORD_PALETTE_TITLE}
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                    {chordPaletteChords.map(chord => (
-                        <button key={chord} onClick={() => handleChordPaletteClick(chord)} disabled={isReadOnly} className="px-3 py-1 text-sm font-mono font-semibold bg-slate-700 text-slate-100 rounded-md hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                            {chord}
-                        </button>
-                    ))}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 overflow-hidden">
+        <div className="flex flex-col h-full">
+            <div className="flex-shrink-0 p-2 border-b border-slate-700 bg-slate-800/30 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <button onClick={() => !isReadOnly && setTransposeSteps(prev => prev - 1)} title={UI_STRINGS.TRANSPOSE_DOWN_BUTTON} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-50" disabled={isReadOnly}><TransposeDownIcon /></button>
+                    <button onClick={() => !isReadOnly && setTransposeSteps(0)} title={UI_STRINGS.RESET_TRANSPOSE_BUTTON_TITLE} className="px-3 py-1 text-sm font-semibold bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-50" disabled={transposeSteps === 0 || isReadOnly}>{transposeSteps > 0 ? `+${transposeSteps}` : transposeSteps}</button>
+                    <button onClick={() => !isReadOnly && setTransposeSteps(prev => prev + 1)} title={UI_STRINGS.TRANSPOSE_UP_BUTTON} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-50" disabled={isReadOnly}><TransposeUpIcon /></button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleSuggestChords} disabled={isReadOnly || isSuggestingChords} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg disabled:bg-slate-600 disabled:cursor-not-allowed" title={UI_STRINGS.SUGGEST_CHORDS_TOOLTIP}>
+                    {isSuggestingChords ? <SpinnerIcon /> : <MagicWandIcon />}
+                    {isSuggestingChords ? UI_STRINGS.SUGGESTING_CHORDS_BUTTON : UI_STRINGS.SUGGEST_CHORDS_BUTTON}
+                  </button>
+                  <button onClick={handleOpenChordPicker} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-50"><ChordIcon />{UI_STRINGS.INSERT_CHORD_BUTTON}</button>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setPDFModalOpen(true)} disabled={isExporting} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-700 hover:bg-red-600 rounded-lg disabled:bg-slate-600 disabled:cursor-wait"><PDFIcon />{isExporting ? UI_STRINGS.EXPORTING_PDF_BUTTON : UI_STRINGS.EXPORT_PDF_BUTTON}</button>
+                    <button onClick={handleExportSongJson} className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-700 hover:bg-slate-600 rounded-lg"><ExportIcon />{UI_STRINGS.EXPORT_JSON_BUTTON}</button>
+                    <button onClick={() => setHideChords(h => !h)} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg" title={UI_STRINGS.TOGGLE_CHORDS_VIEW_TITLE}>{hideChords ? <EyeOffIcon/> : <EyeIcon />}</button>
                 </div>
             </div>
-            <div className="flex w-full flex-1 border border-slate-700 rounded-lg overflow-hidden bg-slate-900/50">
-                <div ref={lineNumbersRef} className="p-4 font-mono text-sm text-right text-slate-500 bg-slate-800/60 select-none overflow-y-hidden leading-6">
-                    <pre className="min-h-full">{lineNumbers}</pre>
+            {(!isReadOnly || chordPaletteChords.length > 0) && (
+                <div className="flex-shrink-0 p-3 border-b border-slate-700 bg-slate-800/30">
+                    <h4 className="text-xs uppercase font-bold text-slate-400 mb-2">{isUsingDefaultChords ? UI_STRINGS.COMMON_CHORDS_TITLE : UI_STRINGS.CHORD_PALETTE_TITLE}</h4>
+                    <div className="flex flex-wrap gap-2">
+                        {chordPaletteChords.map(chord => (
+                            <button key={chord} onClick={() => handleChordPaletteClick(chord)} disabled={isReadOnly} className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-sm font-mono disabled:opacity-60">{chord}</button>
+                        ))}
+                    </div>
                 </div>
-                <div className="relative flex-1">
-                    <div
-                      ref={highlightRef}
-                      className="absolute inset-0 p-4 font-mono text-sm whitespace-pre-wrap pointer-events-none overflow-auto leading-6"
-                      dangerouslySetInnerHTML={{ __html: highlightedContent }}
-                    />
-                    <textarea
-                      ref={textareaRef}
-                      value={content}
-                      onChange={e => setContent(e.target.value)}
-                      onScroll={handleScroll}
-                      onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_CONTENT && setContent('')}
-                      onBlur={e => e.target.value.trim() === '' && setContent(UI_STRINGS.NEW_SONG_CONTENT)}
-                      placeholder={UI_STRINGS.EDITOR_PLACEHOLDER}
-                      readOnly={isReadOnly}
-                      className={`absolute inset-0 w-full h-full p-4 font-mono text-sm bg-transparent focus:outline-none resize-none caret-white text-transparent leading-6 ${isReadOnly ? 'cursor-default' : ''}`}
-                      spellCheck="false" autoComplete="off" autoCorrect="off" autoCapitalize="off"
-                    />
+            )}
+            <div className="relative flex-grow bg-slate-900/50">
+                <div ref={lineNumbersRef} className="absolute top-0 left-0 h-full p-4 font-mono text-slate-600 text-right select-none overflow-hidden" style={{ width: '40px' }} aria-hidden="true">
+                    {lineNumbers}
                 </div>
+                <div ref={highlightRef} className="absolute top-0 left-0 h-full w-full p-4 font-mono whitespace-pre-wrap overflow-hidden pointer-events-none" style={{ marginLeft: '40px' }} dangerouslySetInnerHTML={{ __html: highlightedContent }} />
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={e => !isReadOnly && setContent(e.target.value)}
+                  onScroll={handleScroll}
+                  readOnly={isReadOnly}
+                  placeholder={UI_STRINGS.EDITOR_PLACEHOLDER}
+                  className="absolute top-0 left-0 h-full w-full p-4 font-mono bg-transparent text-transparent caret-sky-400 resize-none focus:outline-none"
+                  style={{ marginLeft: '40px' }}
+                  spellCheck="false"
+                />
             </div>
         </div>
-
-        <div className="h-full overflow-y-auto bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold mb-4 text-sky-400 border-b border-slate-700 pb-2 sticky top-0 bg-slate-800/50 py-2 -mt-4 pt-4 z-10">{UI_STRINGS.PREVIEW_TITLE}</h3>
-            <Preview content={transposedContent} hideChords={hideChords} />
-          </div>
-          <div className="border-t border-slate-700 pt-4"><ChordDisplay chords={uniqueChordsForDiagrams} customChords={customChords} /></div>
-          <div className="border-t border-slate-700 pt-4 space-y-4">
-            <h3 className="text-lg font-semibold text-sky-400 border-b border-slate-700 pb-2">{UI_STRINGS.SONG_SETTINGS_TITLE}</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.BPM_LABEL}</label>
-                <input type="number" value={bpm} onChange={e => setBpm(e.target.value)} readOnly={isReadOnly} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"/>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.TIME_SIGNATURE_LABEL}</label>
-                <input type="text" value={timeSignature} onChange={e => setTimeSignature(e.target.value)} readOnly={isReadOnly} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"/>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.BACKING_TRACK_LABEL}</label>
-              {backingTrackName ? (
-                <div className="flex items-center justify-between bg-slate-700 p-2 rounded-lg">
-                  <p className="text-sm text-slate-200 truncate">{backingTrackName}</p>
-                  <button onClick={handleRemoveTrack} disabled={isReadOnly} className="p-1 text-slate-400 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"><XCircleIcon /></button>
+        <div className="lg:border-l border-slate-700 overflow-y-auto p-6 flex flex-col gap-8">
+            <details open>
+                <summary className="text-lg font-semibold text-sky-400 cursor-pointer">{UI_STRINGS.PREVIEW_TITLE}</summary>
+                <div className="mt-4">
+                  <Preview content={transposedContent} hideChords={hideChords} />
                 </div>
-              ) : (
-                <>
-                  <input type="file" accept="audio/*" ref={audioFileRef} onChange={handleFileChange} className="hidden" />
-                  <button onClick={() => audioFileRef.current?.click()} disabled={isReadOnly} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-600 hover:bg-slate-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><UploadCloudIcon /> {UI_STRINGS.UPLOAD_TRACK_BUTTON}</button>
-                </>
-              )}
-              <div className="flex items-start gap-2 mt-2 text-xs text-slate-400">
-                <InfoIcon />
-                <span>{UI_STRINGS.AUDIO_SAVED_INFO}</span>
-              </div>
-            </div>
-          </div>
+            </details>
+
+            <ChordDisplay chords={uniqueChordsForDiagrams} customChords={customChords} />
+
+            <details>
+                <summary className="text-lg font-semibold text-sky-400 cursor-pointer">{UI_STRINGS.SONG_SETTINGS_TITLE}</summary>
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="bpm" className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.BPM_LABEL}</label>
+                        <input type="number" id="bpm" value={bpm} onChange={e => !isReadOnly && setBpm(e.target.value)} readOnly={isReadOnly} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded-lg" />
+                    </div>
+                    <div>
+                        <label htmlFor="time-sig" className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.TIME_SIGNATURE_LABEL}</label>
+                        <input type="text" id="time-sig" value={timeSignature} onChange={e => !isReadOnly && setTimeSignature(e.target.value)} readOnly={isReadOnly} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded-lg" />
+                    </div>
+                    <div className="col-span-2">
+                        <label className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.BACKING_TRACK_LABEL}</label>
+                        <div className="flex items-center gap-2">
+                             <button onClick={() => !isReadOnly && audioFileRef.current?.click()} disabled={isReadOnly} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-50">
+                                <UploadCloudIcon />
+                                {backingTrackName ? UI_STRINGS.UPLOAD_TRACK_BUTTON : UI_STRINGS.UPLOAD_TRACK_BUTTON}
+                            </button>
+                             {backingTrackName && (
+                                <button onClick={handleRemoveTrack} disabled={isReadOnly} className="p-2 text-red-400 bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-50" title={UI_STRINGS.REMOVE_TRACK_BUTTON}>
+                                    <XCircleIcon />
+                                </button>
+                            )}
+                        </div>
+                        {backingTrackName && <p className="text-xs text-slate-400 mt-2 truncate">Pista actual: {backingTrackName}</p>}
+                        <input type="file" ref={audioFileRef} onChange={handleFileChange} accept="audio/*" className="hidden" />
+                    </div>
+                </div>
+            </details>
         </div>
       </div>
       <ChordPickerModal isOpen={isChordPickerOpen} onClose={() => setChordPickerOpen(false)} onSelectChord={handleInsertChord} prefs={prefs} songKey={songKey} />
-      <PDFExportModal isOpen={isPDFModalOpen} onClose={() => setPDFModalOpen(false)} onExport={handleExportToPDF}/>
-      {isPerformanceMode && (<PerformanceMode song={currentSongStateForPerformanceMode} onClose={() => setPerformanceMode(false)}/>)}
+      <PDFExportModal isOpen={isPDFModalOpen} onClose={() => setPDFModalOpen(false)} onExport={handleExportToPDF} />
+      {isPerformanceMode && <PerformanceMode song={currentSongStateForPerformanceMode} onClose={() => setPerformanceMode(false)} />}
     </div>
   );
 };

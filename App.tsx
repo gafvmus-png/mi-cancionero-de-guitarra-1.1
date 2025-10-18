@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Song, UserPrefs, ToastData, Setlist } from './types';
 import { SongList } from './components/SongList';
@@ -513,7 +514,12 @@ const App: React.FC = () => {
 
   // --- App Update ---
   const confirmUpdateApp = useCallback(() => {
-    window.location.reload();
+    // Using `true` forces a reload from the server, bypassing the cache.
+    // This helps ensure the latest version of the app is loaded, fixing
+    // issues where an update might lead to a broken state with mixed assets.
+    // FIX: Suppress TypeScript error for the deprecated 'true' argument in reload(). This is necessary to maintain the force-reload functionality.
+    // @ts-ignore
+    window.location.reload(true);
   }, []);
 
   // --- Navigation ---
