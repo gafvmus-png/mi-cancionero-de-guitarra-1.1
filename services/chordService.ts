@@ -68,12 +68,12 @@ const CHORD_FORMULAS = new Map<string, number[]>([
     // Most common first for priority
     ['', [0, 4, 7]], // Major
     ['m', [0, 3, 7]], // Minor
-    ['5', [0, 7]], // Power Chord
     ['7', [0, 4, 7, 10]], // Dominant 7
     ['m7', [0, 3, 7, 10]], // Minor 7
     ['maj7', [0, 4, 7, 11]], // Major 7
-    ['sus2', [0, 2, 7]],
     ['sus4', [0, 5, 7]],
+    ['sus2', [0, 2, 7]],
+    ['5', [0, 7]], // Power Chord
     ['dim', [0, 3, 6]],
     ['aug', [0, 4, 8]],
     ['m7b5', [0, 3, 6, 10]], // Half-diminished
@@ -86,6 +86,38 @@ const CHORD_FORMULAS = new Map<string, number[]>([
     ['m9', [0, 3, 7, 10, 2]],
     ['maj9', [0, 4, 7, 11, 2]],
 ]);
+
+// Defines the preferred accidental (sharp/flat) for a given key/root.
+// This helps correctly name notes in inversions, e.g., Gm7/Bb instead of Gm7/A#.
+const ROOT_ACCIDENTAL_PREFERENCE: { [key: string]: 'sharp' | 'flat' } = {
+    // Flat-preferring roots
+    'F': 'flat',
+    'Bb': 'flat',
+    'Eb': 'flat',
+    'Ab': 'flat',
+    'Db': 'flat',
+    'Gb': 'flat',
+    'Cb': 'flat',
+    'Gm': 'flat', // G minor uses Bb, Eb
+    'Cm': 'flat', // C minor uses Bb, Eb, Ab
+    'Fm': 'flat', // F minor uses Bb, Eb, Ab, Db
+    'Bbm': 'flat',
+    'Ebm': 'flat',
+
+    // Sharp-preferring roots
+    'G': 'sharp',
+    'D': 'sharp',
+    'A': 'sharp',
+    'E': 'sharp',
+    'B': 'sharp',
+    'F#': 'sharp',
+    'C#': 'sharp',
+    'Em': 'sharp', // E minor uses F#
+    'Bm': 'sharp', // B minor uses F#, C#
+    'F#m': 'sharp',
+    'C#m': 'sharp',
+    'G#m': 'sharp',
+};
 
 const getNoteFromFret = (stringIndex: number, fret: number, notation: Notation): string => {
     if (fret < 0) return '';
@@ -110,13 +142,12 @@ const getNotesFromShape = (shape: ChordShape, notation: Notation): { note: strin
 
 export const getChordNameFromShape = (shape: ChordShape, notation: Notation, songKey?: string): string | null => {
     const notesWithPosition = getNotesFromShape(shape, notation);
-    if (notesWithPosition.length === 0) return null;
+    if (notesWithPosition.length < 2) {
+        return notesWithPosition.length > 0 ? notesWithPosition[0].note : null;
+    }
 
     const uniqueNoteNames = Array.from(new Set(notesWithPosition.map(n => n.note)));
-    if (uniqueNoteNames.length === 0) return null;
-    if (uniqueNoteNames.length === 1) return uniqueNoteNames[0];
-
-    const bassNote = notesWithPosition.sort((a,b) => a.stringIndex - b.stringIndex)[0].note;
+    const bassNote = notesWithPosition.sort((a, b) => a.stringIndex - b.stringIndex)[0].note;
     
     let bestGuess = { name: '', score: -Infinity };
 
@@ -128,6 +159,8 @@ export const getChordNameFromShape = (shape: ChordShape, notation: Notation, son
             const noteIndex = getNoteIndex(note);
             return (noteIndex - rootIndex + 12) % 12;
         }));
+        
+        if (!intervals.has(0)) continue;
 
         for (const [quality, formulaIntervals] of CHORD_FORMULAS.entries()) {
             const formulaSet = new Set(formulaIntervals);
@@ -136,27 +169,65 @@ export const getChordNameFromShape = (shape: ChordShape, notation: Notation, son
             const extraIntervalsInChord = new Set([...intervals].filter(i => !formulaSet.has(i)));
             const missingIntervalsFromFormula = new Set([...formulaIntervals].filter(i => !intervals.has(i)));
 
-            // The root of the potential chord must be in the played notes.
-            if (!intervals.has(0)) continue;
-
             let score = 0;
-            // Reward matching notes, penalize dissonant or missing notes.
-            score += matchingIntervals.size * 10;
-            score -= extraIntervalsInChord.size * 5;
-            score -= missingIntervalsFromFormula.size * 8;
-            
-            // Prefer simpler chords in case of a tie
-            score -= quality.length; 
-            score -= formulaIntervals.length;
 
-            if (potentialRoot === bassNote) {
-                score += 20; // Big bonus for non-inversions
-            }
+            // 1. Base score on matches
+            score += matchingIntervals.size * 10;
+
+            // 2. Penalize extra notes heavily
+            score -= extraIntervalsInChord.size * 15;
+
+            // 3. Penalize missing notes based on their musical importance
+            let missingPenalty = 0;
+            missingIntervalsFromFormula.forEach(interval => {
+                if ((interval === 3 || interval === 4) && !quality.includes('sus') && quality !== '5') missingPenalty += 10; // 3rd
+                else if (interval === 7) missingPenalty += 5; // 5th
+                else if (interval === 10 || interval === 11) missingPenalty += 4; // 7th
+                else missingPenalty += 1; // Extensions
+            });
+            score -= missingPenalty;
             
-            // TODO: Add scoring based on songKey diatonic relationship
+            // 4. Prefer simpler chords (fewer notes in formula)
+            score -= formulaIntervals.length * 2;
+            
+            // 5. Bonus for common/foundational chord qualities
+            const qualityBonus: { [key: string]: number } = {
+                '7': 8, 'm7': 8, 'maj7': 6, '': 5, 'm': 5,
+            };
+            score += qualityBonus[quality] || 0;
+            
+            // 6. More nuanced bonus for inversions
+            if (potentialRoot === bassNote) {
+                score += 10; // Root position bonus
+            } else {
+                const rootNoteIndex = getNoteIndex(potentialRoot);
+                const bassNoteIndex = getNoteIndex(bassNote);
+                if (rootNoteIndex !== -1 && bassNoteIndex !== -1) {
+                    const bassIntervalFromRoot = (bassNoteIndex - rootNoteIndex + 12) % 12;
+                    const third = formulaIntervals.length > 1 ? formulaIntervals[1] : -1;
+                    const fifth = formulaIntervals.length > 2 ? formulaIntervals[2] : -1;
+                    const seventh = formulaIntervals.length > 3 ? formulaIntervals[3] : -1;
+
+                    if (bassIntervalFromRoot === third) score += 6; // 1st inversion
+                    else if (bassIntervalFromRoot === fifth) score += 4; // 2nd inversion
+                    else if (seventh !== -1 && bassIntervalFromRoot === seventh) score += 2; // 3rd inversion
+                }
+            }
 
             if (score > bestGuess.score) {
-                const name = potentialRoot + quality + (potentialRoot !== bassNote ? `/${bassNote}` : '');
+                let finalBassNote = bassNote;
+                if (potentialRoot !== bassNote) {
+                    // Determine preferred accidental based on the chord's root to correctly spell inversions.
+                    const isMinor = quality.includes('m');
+                    const preferenceKey = isMinor ? `${potentialRoot}m` : potentialRoot;
+                    const preference = ROOT_ACCIDENTAL_PREFERENCE[preferenceKey] || ROOT_ACCIDENTAL_PREFERENCE[potentialRoot];
+
+                    const bassNoteIndex = getNoteIndex(bassNote);
+                    if (bassNoteIndex !== -1 && preference) {
+                        finalBassNote = preference === 'flat' ? notesFlat[bassNoteIndex] : notesSharp[bassNoteIndex];
+                    }
+                }
+                const name = potentialRoot + quality + (potentialRoot !== bassNote ? `/${finalBassNote}` : '');
                 bestGuess = { name, score };
             }
         }
