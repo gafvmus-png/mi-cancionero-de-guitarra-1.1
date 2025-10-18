@@ -51,6 +51,7 @@ export const UI_STRINGS = {
   UNSAVED_CHANGES_WARNING: "Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?",
   CHORD_PALETTE_TITLE: "Acordes en la Canción",
   COMMON_CHORDS_TITLE: "Acordes Comunes",
+  READ_ONLY_SONG_INFO: "Esta es una canción de ejemplo y no se puede editar.",
 
   // Song Settings in Editor
   SONG_SETTINGS_TITLE: "Ajustes de Interpretación",
@@ -84,8 +85,8 @@ export const UI_STRINGS = {
   BASE_FRET_LABEL: "Traste Base",
   RESET_SHAPE_BUTTON: "Reiniciar Diagrama",
   CHORD_BUILDER_ROOT_NOTE: "Nota Raíz",
-  CHORD_BUILDER_QUALITY: "Calidad",
-  CHORD_BUILDER_EXTENSIONS: "Tensiones",
+  CHORD_BUILDER_QUALITY: "Tipo de Acorde (Base)",
+  CHORD_BUILDER_EXTENSIONS: "Tensiones y Alteraciones",
   CHORD_BUILDER_BASS: "Bajo (Inversión)",
   CHORD_BUILDER_INSERT: "Insertar",
   CHORD_BUILDER_CLEAR: "Limpiar",
@@ -133,6 +134,7 @@ export const UI_STRINGS = {
   TOAST_SONG_SAVED: "Canción guardada con éxito.",
   TOAST_SONG_EXPORTED: "Canción exportada",
   TOAST_SONG_DELETED: "Canción eliminada.",
+  TOAST_GUIDE_SONG_DELETE_ERROR: "Las canciones de ejemplo no se pueden eliminar.",
   TOAST_SETLIST_CREATED: "Repertorio creado.",
   TOAST_SETLIST_UPDATED: "Repertorio actualizado.",
   TOAST_SETLIST_DELETED: "Repertorio eliminado.",

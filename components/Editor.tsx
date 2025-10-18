@@ -22,6 +22,8 @@ interface EditorProps {
   onReturnToSetlist?: () => void;
 }
 
+const NON_EDITABLE_SONG_IDS = ['tutorial-1', 'chord-library-1'];
+
 const highlightSyntax = (text: string) => {
   const escapeHtml = (unsafe: string) => 
     unsafe
@@ -73,6 +75,8 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
 
   const debouncedContent = useDebounce(content, 250);
   
+  const isReadOnly = NON_EDITABLE_SONG_IDS.includes(song.id);
+
   const hasChanges = useMemo(() => {
     return title !== song.title || 
            artist !== song.artist || 
@@ -121,6 +125,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   };
 
   const handleSave = useCallback(() => {
+    if (isReadOnly) return;
     const songDataToSave: Song = {
       ...song,
       title,
@@ -132,39 +137,39 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       duration: duration || undefined,
     };
     onSave(songDataToSave);
-  }, [onSave, song, title, artist, content, bpm, timeSignature, backingTrackName, duration]);
+  }, [onSave, song, title, artist, content, bpm, timeSignature, backingTrackName, duration, isReadOnly]);
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        if (hasChanges) {
+        if (hasChanges && !isReadOnly) {
           handleSave();
         }
       }
       if (e.altKey && e.key === 'ArrowUp') {
         e.preventDefault();
-        setTransposeSteps(prev => prev + 1);
+        if (!isReadOnly) setTransposeSteps(prev => prev + 1);
       }
       if (e.altKey && e.key === 'ArrowDown') {
         e.preventDefault();
-        setTransposeSteps(prev => prev - 1);
+        if (!isReadOnly) setTransposeSteps(prev => prev - 1);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasChanges, handleSave]);
+  }, [hasChanges, handleSave, isReadOnly]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasChanges) {
+      if (hasChanges && !isReadOnly) {
         e.preventDefault();
         e.returnValue = UI_STRINGS.UNSAVED_CHANGES_WARNING;
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasChanges]);
+  }, [hasChanges, isReadOnly]);
   
   // Cleanup worker on component unmount
   useEffect(() => {
@@ -183,7 +188,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   };
   
   const insertTextAtCursor = useCallback((textToInsert: string) => {
-    if (!textareaRef.current) return;
+    if (!textareaRef.current || isReadOnly) return;
     const { selectionStart, selectionEnd } = textareaRef.current;
 
     const newContent =
@@ -198,7 +203,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
     }, 0);
-  }, [content]);
+  }, [content, isReadOnly]);
 
   const handleInsertChord = useCallback((chord: string, shape?: ChordShape) => {
     insertTextAtCursor(`[${chord}]`);
@@ -216,7 +221,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   };
 
   const handleSuggestChords = async () => {
-      if (!textareaRef.current) return;
+      if (!textareaRef.current || isReadOnly) return;
       const { selectionStart, selectionEnd } = textareaRef.current;
       
       if (selectionStart === selectionEnd) {
@@ -255,7 +260,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   // --- Audio File Handling with IndexedDB ---
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || isReadOnly) return;
 
     if (file.size > 15 * 1024 * 1024) { // 15MB limit for IndexedDB for safety
         showToast({ message: UI_STRINGS.TOAST_AUDIO_FILE_TOO_LARGE, type: 'error' });
@@ -285,6 +290,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   };
 
   const handleRemoveTrack = async () => {
+    if (isReadOnly) return;
     try {
         await deleteTrack(song.id);
         setBackingTrackName(undefined);
@@ -716,6 +722,12 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
 
   return (
     <div className="flex flex-col h-full">
+      {isReadOnly && (
+        <div className="p-2 bg-yellow-900/50 border-b border-yellow-700 text-yellow-300 text-center flex items-center justify-center gap-2 text-sm">
+            <InfoIcon />
+            <span>{UI_STRINGS.READ_ONLY_SONG_INFO}</span>
+        </div>
+      )}
       {setlistContext && onReturnToSetlist && (
         <div className="p-2 bg-slate-700/50 border-b border-slate-600 text-center">
           <button onClick={onReturnToSetlist} className="flex items-center justify-center gap-2 text-sm text-sky-300 hover:text-sky-200 w-full">
@@ -732,7 +744,8 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_TITLE && setTitle('')}
               onBlur={e => e.target.value.trim() === '' && setTitle(UI_STRINGS.NEW_SONG_TITLE)}
               placeholder={UI_STRINGS.TITLE_PLACEHOLDER}
-              className="flex-grow px-3 py-2 text-lg font-bold bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400"
+              readOnly={isReadOnly}
+              className={`flex-grow px-3 py-2 text-lg font-bold bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
             />
             <input
               type="text"
@@ -741,19 +754,20 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_ARTIST && setArtist('')}
               onBlur={e => e.target.value.trim() === '' && setArtist(UI_STRINGS.NEW_SONG_ARTIST)}
               placeholder={UI_STRINGS.ARTIST_PLACEHOLDER}
-              className="w-full md:w-1/3 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400"
+              readOnly={isReadOnly}
+              className={`w-full md:w-1/3 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
             />
         </div>
       </header>
       
       <div className="p-2 bg-slate-900/30 border-b border-slate-700 flex items-center gap-2 flex-wrap">
-        <button onClick={handleSave} disabled={!hasChanges} className={`flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition-colors ${hasChanges ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}>
+        <button onClick={handleSave} disabled={!hasChanges || isReadOnly} className={`flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition-colors ${hasChanges && !isReadOnly ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}>
           <SaveIcon /> {hasChanges ? UI_STRINGS.SAVE_CHANGES_BUTTON : UI_STRINGS.SAVED_BUTTON}
         </button>
-        <button onClick={handleOpenChordPicker} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
+        <button onClick={handleOpenChordPicker} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             <ChordIcon /> {UI_STRINGS.INSERT_CHORD_BUTTON}
         </button>
-        <button onClick={handleSuggestChords} disabled={isSuggestingChords} title={UI_STRINGS.SUGGEST_CHORDS_TOOLTIP} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg transition-colors disabled:bg-purple-800 disabled:cursor-wait">
+        <button onClick={handleSuggestChords} disabled={isSuggestingChords || isReadOnly} title={UI_STRINGS.SUGGEST_CHORDS_TOOLTIP} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg transition-colors disabled:bg-purple-800 disabled:cursor-wait">
             {isSuggestingChords ? <SpinnerIcon /> : <MagicWandIcon />} {isSuggestingChords ? UI_STRINGS.SUGGESTING_CHORDS_BUTTON : UI_STRINGS.SUGGEST_CHORDS_BUTTON}
         </button>
         <button onClick={() => setPDFModalOpen(true)} disabled={isExporting} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors disabled:bg-red-800 disabled:cursor-wait">
@@ -763,8 +777,8 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           <ExportIcon /> {UI_STRINGS.EXPORT_JSON_BUTTON}
         </button>
         <div className="h-6 w-px bg-slate-700 mx-2"></div>
-        <button onClick={() => setTransposeSteps(prev => prev + 1)} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"><TransposeUpIcon/> {UI_STRINGS.TRANSPOSE_UP_BUTTON}</button>
-        <button onClick={() => setTransposeSteps(prev => prev - 1)} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"><TransposeDownIcon/> {UI_STRINGS.TRANSPOSE_DOWN_BUTTON}</button>
+        <button onClick={() => setTransposeSteps(prev => prev + 1)} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><TransposeUpIcon/> {UI_STRINGS.TRANSPOSE_UP_BUTTON}</button>
+        <button onClick={() => setTransposeSteps(prev => prev - 1)} disabled={isReadOnly} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><TransposeDownIcon/> {UI_STRINGS.TRANSPOSE_DOWN_BUTTON}</button>
         {transposeSteps !== 0 && (
             <div className="flex items-center gap-1">
               <span className="text-sm font-semibold text-sky-300">
@@ -792,7 +806,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                 </h4>
                 <div className="flex flex-wrap gap-2">
                     {chordPaletteChords.map(chord => (
-                        <button key={chord} onClick={() => handleChordPaletteClick(chord)} className="px-3 py-1 text-sm font-mono font-semibold bg-slate-700 text-slate-100 rounded-md hover:bg-slate-600 transition-colors">
+                        <button key={chord} onClick={() => handleChordPaletteClick(chord)} disabled={isReadOnly} className="px-3 py-1 text-sm font-mono font-semibold bg-slate-700 text-slate-100 rounded-md hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {chord}
                         </button>
                     ))}
@@ -816,7 +830,8 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                       onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_CONTENT && setContent('')}
                       onBlur={e => e.target.value.trim() === '' && setContent(UI_STRINGS.NEW_SONG_CONTENT)}
                       placeholder={UI_STRINGS.EDITOR_PLACEHOLDER}
-                      className="absolute inset-0 w-full h-full p-4 font-mono text-sm bg-transparent focus:outline-none resize-none caret-white text-transparent leading-6"
+                      readOnly={isReadOnly}
+                      className={`absolute inset-0 w-full h-full p-4 font-mono text-sm bg-transparent focus:outline-none resize-none caret-white text-transparent leading-6 ${isReadOnly ? 'cursor-default' : ''}`}
                       spellCheck="false" autoComplete="off" autoCorrect="off" autoCapitalize="off"
                     />
                 </div>
@@ -834,11 +849,11 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.BPM_LABEL}</label>
-                <input type="number" value={bpm} onChange={e => setBpm(e.target.value)} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"/>
+                <input type="number" value={bpm} onChange={e => setBpm(e.target.value)} readOnly={isReadOnly} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"/>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">{UI_STRINGS.TIME_SIGNATURE_LABEL}</label>
-                <input type="text" value={timeSignature} onChange={e => setTimeSignature(e.target.value)} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"/>
+                <input type="text" value={timeSignature} onChange={e => setTimeSignature(e.target.value)} readOnly={isReadOnly} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"/>
               </div>
             </div>
             <div>
@@ -846,12 +861,12 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               {backingTrackName ? (
                 <div className="flex items-center justify-between bg-slate-700 p-2 rounded-lg">
                   <p className="text-sm text-slate-200 truncate">{backingTrackName}</p>
-                  <button onClick={handleRemoveTrack} className="p-1 text-slate-400 hover:text-red-400"><XCircleIcon /></button>
+                  <button onClick={handleRemoveTrack} disabled={isReadOnly} className="p-1 text-slate-400 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"><XCircleIcon /></button>
                 </div>
               ) : (
                 <>
                   <input type="file" accept="audio/*" ref={audioFileRef} onChange={handleFileChange} className="hidden" />
-                  <button onClick={() => audioFileRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-600 hover:bg-slate-500 rounded-lg transition-colors"><UploadCloudIcon /> {UI_STRINGS.UPLOAD_TRACK_BUTTON}</button>
+                  <button onClick={() => audioFileRef.current?.click()} disabled={isReadOnly} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-slate-600 hover:bg-slate-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><UploadCloudIcon /> {UI_STRINGS.UPLOAD_TRACK_BUTTON}</button>
                 </>
               )}
               <div className="flex items-start gap-2 mt-2 text-xs text-slate-400">

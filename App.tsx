@@ -127,6 +127,8 @@ const initialSongChordLibrary: Song = {
   updatedAt: new Date().toISOString(),
 };
 
+const NON_EDITABLE_SONG_IDS = ['tutorial-1', 'chord-library-1'];
+
 
 const App: React.FC = () => {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -255,6 +257,10 @@ const App: React.FC = () => {
   }, []);
 
   const handleDeleteSongRequest = useCallback((songId: string) => {
+    if (NON_EDITABLE_SONG_IDS.includes(songId)) {
+      showToast({ message: UI_STRINGS.TOAST_GUIDE_SONG_DELETE_ERROR, type: 'info' });
+      return;
+    }
     const song = songs.find(s => s.id === songId);
     if(song) setSongToDelete(song);
   }, [songs]);

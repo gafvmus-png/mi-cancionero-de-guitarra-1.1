@@ -14,16 +14,23 @@ interface ChordPickerModalProps {
 const notesSharp = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const notesFlat = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
-const QUALITIES = [
-  { display: 'Mayor', value: '' },
-  { display: 'Menor', value: 'm' },
-  { display: 'Aum', value: 'aug' },
-  { display: 'Dim', value: 'dim' },
-  { display: 'Sus2', value: 'sus2' },
-  { display: 'Sus4', value: 'sus4' },
+const CHORD_TYPES = [
+  { display: 'Maj', value: '' },
+  { display: 'm', value: 'm' },
+  { display: '7', value: '7' },
+  { display: 'm7', value: 'm7' },
+  { display: 'maj7', value: 'maj7' },
+  { display: 'dim', value: 'dim' },
+  { display: 'dim7', value: 'dim7' },
+  { display: 'aug', value: 'aug' },
+  { display: 'sus2', value: 'sus2' },
+  { display: 'sus4', value: 'sus4' },
+  { display: 'm(maj7)', value: 'm(maj7)' },
+  { display: '7sus4', value: '7sus4' }
 ];
 
-const EXTENSIONS = ['7', 'maj7', '6', '9', 'add9', '11', '13'];
+const TENSIONS = ['6', '9', '11', '13', 'b5', '#5', 'b9', '#9', '#11', 'b13'];
+
 
 const BuilderSection: React.FC<{ title: string, children: React.ReactNode }> = ({ title, children }) => (
   <div className="mb-4">
@@ -188,8 +195,8 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
 
   // State for Quick Builder
   const [root, setRoot] = useState<string | null>(null);
-  const [quality, setQuality] = useState<string>('');
-  const [extensions, setExtensions] = useState<Set<string>>(new Set());
+  const [chordType, setChordType] = useState<string>('');
+  const [tensions, setTensions] = useState<Set<string>>(new Set());
   const [bass, setBass] = useState<string | null>(null);
 
   // State for Visual Editor
@@ -201,22 +208,39 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
 
   const builtChord = useMemo(() => {
     if (!root) return '';
-    const extensionStr = EXTENSIONS.filter(ext => extensions.has(ext)).join('');
+    
+    const mainPart = root + chordType;
+    const tensionArr = Array.from(tensions);
+
+    if (tensionArr.length === 0) {
+        return bass ? `${mainPart}/${bass}` : mainPart;
+    }
+    
+    // Sort tensions for consistent naming, e.g., (b9,13) not (13,b9)
+    // This sorting is naive but works for most musical cases.
+    // FIX: Explicitly type `a` and `b` as strings to fix type inference issue.
+    const sortedTensions = tensionArr.sort((a: string, b: string) => {
+        const numA = parseInt(a.replace(/[b#]/, ''), 10);
+        const numB = parseInt(b.replace(/[b#]/, ''), 10);
+        if (numA !== numB) return numA - numB;
+        // if numbers are same, sort alterations: b comes before #
+        if (a.includes('b')) return -1;
+        if (a.includes('#')) return 1;
+        return 0;
+    });
+
+    const tensionStr = `(${sortedTensions.join(',')})`;
     const bassStr = bass ? `/${bass}` : '';
-    return `${root}${quality}${extensionStr}${bassStr}`;
-  }, [root, quality, extensions, bass]);
+
+    return `${mainPart}${tensionStr}${bassStr}`;
+  }, [root, chordType, tensions, bass]);
   
-  const handleExtensionToggle = (ext: string) => {
-    setExtensions(prev => {
+  const handleTensionToggle = (ext: string) => {
+    setTensions(prev => {
       const newSet = new Set(prev);
       if (newSet.has(ext)) {
         newSet.delete(ext);
       } else {
-        // Conflicting extensions logic
-        if (ext === '7' && newSet.has('maj7')) newSet.delete('maj7');
-        if (ext === 'maj7' && newSet.has('7')) newSet.delete('7');
-        if (ext === 'sus2' && newSet.has('sus4')) newSet.delete('sus4');
-        if (ext === 'sus4' && newSet.has('sus2')) newSet.delete('sus2');
         newSet.add(ext);
       }
       return newSet;
@@ -225,8 +249,8 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
 
   const resetBuilder = () => {
     setRoot(null);
-    setQuality('');
-    setExtensions(new Set());
+    setChordType('');
+    setTensions(new Set());
     setBass(null);
   };
   
@@ -268,11 +292,29 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
         className={`py-2 px-3 text-sm rounded-lg font-mono font-semibold transition-colors duration-150 min-w-[40px]
           ${isActive ? 'bg-sky-600 text-white scale-105' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'}`}
       >
-        {value || 'Maj'}
+        {value}
       </button>
     );
   };
   
+   const renderTypeButton = (
+    display: string,
+    value: string,
+    stateValue: string,
+    setter: (val: string) => void,
+  ) => {
+    const isActive = stateValue === value;
+    return (
+      <button
+        onClick={() => setter(value)}
+        className={`py-2 px-3 text-sm rounded-lg font-mono font-semibold transition-colors duration-150
+          ${isActive ? 'bg-sky-600 text-white scale-105' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'}`}
+      >
+        {display}
+      </button>
+    );
+  };
+
   const renderToggleButton = (
     value: string,
     stateSet: Set<string>,
@@ -350,11 +392,11 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
                   </BuilderSection>
                   
                   <BuilderSection title={UI_STRINGS.CHORD_BUILDER_QUALITY}>
-                    {QUALITIES.map(q => renderButton(q.value, quality, setQuality))}
+                    {CHORD_TYPES.map(q => renderTypeButton(q.display, q.value, chordType, setChordType))}
                   </BuilderSection>
 
                   <BuilderSection title={UI_STRINGS.CHORD_BUILDER_EXTENSIONS}>
-                    {EXTENSIONS.map(ext => renderToggleButton(ext, extensions, handleExtensionToggle))}
+                    {TENSIONS.map(ext => renderToggleButton(ext, tensions, handleTensionToggle))}
                   </BuilderSection>
 
                   <BuilderSection title={UI_STRINGS.CHORD_BUILDER_BASS}>
