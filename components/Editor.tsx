@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Song, ToastData, UserPrefs, Setlist, ChordShape } from '../types';
 import { transposeChordPro, extractUniqueChords, parseChordPro } from '../services/chordproService';
@@ -857,10 +858,10 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                 </div>
             )}
             <div className="relative flex-grow bg-slate-900/50">
-                <div ref={lineNumbersRef} className="absolute top-0 left-0 h-full p-4 font-mono text-slate-600 text-right select-none overflow-hidden" style={{ width: '40px' }} aria-hidden="true">
+                <div ref={lineNumbersRef} className="absolute top-0 left-0 h-full p-4 font-mono text-slate-600 text-right select-none overflow-hidden leading-relaxed" style={{ width: '40px' }} aria-hidden="true">
                     {lineNumbers}
                 </div>
-                <div ref={highlightRef} className="absolute top-0 left-0 h-full w-full p-4 font-mono whitespace-pre-wrap overflow-hidden pointer-events-none" style={{ marginLeft: '40px' }} dangerouslySetInnerHTML={{ __html: highlightedContent }} />
+                <div ref={highlightRef} className="absolute top-0 left-0 h-full w-full p-4 font-mono whitespace-pre-wrap overflow-hidden pointer-events-none leading-relaxed" style={{ marginLeft: '40px' }} dangerouslySetInnerHTML={{ __html: highlightedContent }} />
                 <textarea
                   ref={textareaRef}
                   value={content}
@@ -868,7 +869,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                   onScroll={handleScroll}
                   readOnly={isReadOnly}
                   placeholder={UI_STRINGS.EDITOR_PLACEHOLDER}
-                  className="absolute top-0 left-0 h-full w-full p-4 font-mono bg-transparent text-transparent caret-sky-400 resize-none focus:outline-none"
+                  className="absolute top-0 left-0 h-full w-full p-4 font-mono bg-transparent text-transparent caret-sky-400 resize-none focus:outline-none whitespace-pre-wrap leading-relaxed"
                   style={{ marginLeft: '40px' }}
                   spellCheck="false"
                 />
