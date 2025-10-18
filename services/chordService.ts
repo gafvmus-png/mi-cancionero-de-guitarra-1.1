@@ -68,6 +68,7 @@ const CHORD_FORMULAS = new Map<string, number[]>([
     // Most common first for priority
     ['', [0, 4, 7]], // Major
     ['m', [0, 3, 7]], // Minor
+    ['5', [0, 7]], // Power Chord
     ['7', [0, 4, 7, 10]], // Dominant 7
     ['m7', [0, 3, 7, 10]], // Minor 7
     ['maj7', [0, 4, 7, 11]], // Major 7
@@ -111,49 +112,62 @@ export const getChordNameFromShape = (shape: ChordShape, notation: Notation, son
     const notesWithPosition = getNotesFromShape(shape, notation);
     if (notesWithPosition.length === 0) return null;
 
-    const uniqueNotes = Array.from(new Set(notesWithPosition.map(n => n.note)));
-    if (uniqueNotes.length < 2) return uniqueNotes[0] || null;
+    const uniqueNoteNames = Array.from(new Set(notesWithPosition.map(n => n.note)));
+    if (uniqueNoteNames.length === 0) return null;
+    if (uniqueNoteNames.length === 1) return uniqueNoteNames[0];
 
     const bassNote = notesWithPosition.sort((a,b) => a.stringIndex - b.stringIndex)[0].note;
     
-    let bestGuess = { name: '', score: -1 };
+    let bestGuess = { name: '', score: -Infinity };
 
-    for (const potentialRoot of uniqueNotes) {
+    for (const potentialRoot of uniqueNoteNames) {
         const rootIndex = getNoteIndex(potentialRoot);
         if (rootIndex === -1) continue;
 
-        const intervals = new Set(uniqueNotes.map(note => {
+        const intervals = new Set(uniqueNoteNames.map(note => {
             const noteIndex = getNoteIndex(note);
             return (noteIndex - rootIndex + 12) % 12;
         }));
 
         for (const [quality, formulaIntervals] of CHORD_FORMULAS.entries()) {
             const formulaSet = new Set(formulaIntervals);
-            if (formulaSet.size === intervals.size && [...formulaSet].every(i => intervals.has(i))) {
-                let score = 100;
-                score -= quality.length; // Shorter names are better (m vs m7b5)
-                score -= formulaIntervals.length; // Simpler chords are better
+            
+            const matchingIntervals = new Set([...intervals].filter(i => formulaSet.has(i)));
+            const extraIntervalsInChord = new Set([...intervals].filter(i => !formulaSet.has(i)));
+            const missingIntervalsFromFormula = new Set([...formulaIntervals].filter(i => !intervals.has(i)));
 
-                if (potentialRoot === bassNote) {
-                    score += 20; // Big bonus for non-inversions
-                }
-                
-                // TODO: Add scoring based on songKey diatonic relationship
+            // The root of the potential chord must be in the played notes.
+            if (!intervals.has(0)) continue;
 
-                if (score > bestGuess.score) {
-                    const name = potentialRoot + quality + (potentialRoot !== bassNote ? `/${bassNote}` : '');
-                    bestGuess = { name, score };
-                }
+            let score = 0;
+            // Reward matching notes, penalize dissonant or missing notes.
+            score += matchingIntervals.size * 10;
+            score -= extraIntervalsInChord.size * 5;
+            score -= missingIntervalsFromFormula.size * 8;
+            
+            // Prefer simpler chords in case of a tie
+            score -= quality.length; 
+            score -= formulaIntervals.length;
+
+            if (potentialRoot === bassNote) {
+                score += 20; // Big bonus for non-inversions
+            }
+            
+            // TODO: Add scoring based on songKey diatonic relationship
+
+            if (score > bestGuess.score) {
+                const name = potentialRoot + quality + (potentialRoot !== bassNote ? `/${bassNote}` : '');
+                bestGuess = { name, score };
             }
         }
     }
     
-    // Fallback if no perfect match is found (e.g., for single notes or dyads)
-    if(bestGuess.score === -1 && uniqueNotes.length > 0) {
-        return uniqueNotes[0];
+    // If no decent match was found, just return the bass note.
+    if (bestGuess.score < 10) { 
+        return bassNote;
     }
     
-    return bestGuess.name || null;
+    return bestGuess.name || bassNote;
 }
 
 
