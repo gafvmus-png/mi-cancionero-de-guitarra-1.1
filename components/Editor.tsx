@@ -500,7 +500,8 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           };
 
           // --- PDF Generation Logic ---
-          const { content, title, artist, options } = event.data;
+          const { content, title, artist, options, customChords } = event.data;
+          const ALL_CHORD_DATA = { ...CHORD_DATA, ...(customChords || {}) };
           const { columns, includeDiagrams } = options;
           const pdf = new jsPDF({ unit: 'pt' });
 
@@ -624,7 +625,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           }
           
           // --- DIAGRAMS ---
-          const availableChords = extractUniqueChords(content).filter(c => CHORD_DATA[c]);
+          const availableChords = extractUniqueChords(content).filter(c => ALL_CHORD_DATA[c]);
           if (includeDiagrams && availableChords.length > 0) {
               y += 10;
               checkPageBreak(80);
@@ -639,14 +640,14 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               let diagramCountInLine = 0;
 
               for (const chordName of availableChords) {
-                  if (CHORD_DATA[chordName]) {
+                  if (ALL_CHORD_DATA[chordName]) {
                       if (diagramCountInLine >= diagramsPerLine) {
                           y += diagramBlockHeight;
                           diagramCountInLine = 0;
                       }
                       checkPageBreak(diagramBlockHeight);
                       const currentX = x + (diagramCountInLine * diagramBlockWidth);
-                      drawChordDiagramPDF(pdf, chordName, CHORD_DATA[chordName], currentX, y);
+                      drawChordDiagramPDF(pdf, chordName, ALL_CHORD_DATA[chordName], currentX, y);
                       diagramCountInLine++;
                   }
               }
@@ -704,9 +705,10 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
         content: transposedContent,
         title,
         artist,
+        customChords,
         options: { columns, includeDiagrams }
     });
-  }, [title, artist, content, showToast, transposedContent]);
+  }, [title, artist, content, showToast, transposedContent, customChords]);
 
 
   const currentSongStateForPerformanceMode = useMemo(() => ({
@@ -877,7 +879,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           </div>
         </div>
       </div>
-      <ChordPickerModal isOpen={isChordPickerOpen} onClose={() => setChordPickerOpen(false)} onSelectChord={handleInsertChord} prefs={prefs} />
+      <ChordPickerModal isOpen={isChordPickerOpen} onClose={() => setChordPickerOpen(false)} onSelectChord={handleInsertChord} prefs={prefs} songKey={song.key} />
       <PDFExportModal isOpen={isPDFModalOpen} onClose={() => setPDFModalOpen(false)} onExport={handleExportToPDF}/>
       {isPerformanceMode && (<PerformanceMode song={currentSongStateForPerformanceMode} onClose={() => setPerformanceMode(false)}/>)}
     </div>

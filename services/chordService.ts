@@ -9,14 +9,20 @@ const enharmonicEquivalents: { [key: string]: string } = {
 };
 
 const getNoteIndex = (note: string): number => {
-    const normalizedNote = enharmonicEquivalents[note] || note;
-    let index = notesSharp.indexOf(normalizedNote);
-    if (index === -1) {
-        // Fallback to check flat names in case of weird input
-        const flatIndex = notesFlat.indexOf(note);
-        if (flatIndex !== -1) return flatIndex;
+    // First, try to find in sharps
+    let index = notesSharp.indexOf(note);
+    if (index !== -1) return index;
+
+    // Then, try to find in flats
+    index = notesFlat.indexOf(note);
+    if (index !== -1) return index;
+    
+    // Finally, try enharmonic equivalents
+    const normalizedNote = enharmonicEquivalents[note];
+    if (normalizedNote) {
+        return notesSharp.indexOf(normalizedNote);
     }
-    return index;
+    return -1;
 };
 
 export const transposeChord = (chord: string, semitones: number, notation: Notation = 'sharps'): string => {
@@ -52,6 +58,106 @@ export const transposeChord = (chord: string, semitones: number, notation: Notat
 
     return newChord;
 };
+
+// --- New Chord Naming Logic ---
+
+// EADGBe from low E (string 0) to high e (string 5)
+const STRING_TUNING = [4, 9, 2, 7, 11, 4]; // indices in notesSharp
+
+const CHORD_FORMULAS = new Map<string, number[]>([
+    // Most common first for priority
+    ['', [0, 4, 7]], // Major
+    ['m', [0, 3, 7]], // Minor
+    ['7', [0, 4, 7, 10]], // Dominant 7
+    ['m7', [0, 3, 7, 10]], // Minor 7
+    ['maj7', [0, 4, 7, 11]], // Major 7
+    ['sus2', [0, 2, 7]],
+    ['sus4', [0, 5, 7]],
+    ['dim', [0, 3, 6]],
+    ['aug', [0, 4, 8]],
+    ['m7b5', [0, 3, 6, 10]], // Half-diminished
+    ['dim7', [0, 3, 6, 9]],
+    ['6', [0, 4, 7, 9]],
+    ['m6', [0, 3, 7, 9]],
+    ['add9', [0, 4, 7, 2]],
+    ['madd9', [0, 3, 7, 2]],
+    ['9', [0, 4, 7, 10, 2]],
+    ['m9', [0, 3, 7, 10, 2]],
+    ['maj9', [0, 4, 7, 11, 2]],
+]);
+
+const getNoteFromFret = (stringIndex: number, fret: number, notation: Notation): string => {
+    if (fret < 0) return '';
+    const openNoteIndex = STRING_TUNING[stringIndex];
+    const noteIndex = (openNoteIndex + fret) % 12;
+    return notation === 'flats' ? notesFlat[noteIndex] : notesSharp[noteIndex];
+}
+
+const getNotesFromShape = (shape: ChordShape, notation: Notation): { note: string, stringIndex: number }[] => {
+    const notes: { note: string, stringIndex: number }[] = [];
+    shape.positions.forEach((fret, stringIndex) => {
+        if (typeof fret === 'number' && fret >= 0) {
+            const note = getNoteFromFret(stringIndex, fret, notation);
+            if (note) {
+                notes.push({ note, stringIndex });
+            }
+        }
+    });
+    return notes;
+};
+
+
+export const getChordNameFromShape = (shape: ChordShape, notation: Notation, songKey?: string): string | null => {
+    const notesWithPosition = getNotesFromShape(shape, notation);
+    if (notesWithPosition.length === 0) return null;
+
+    const uniqueNotes = Array.from(new Set(notesWithPosition.map(n => n.note)));
+    if (uniqueNotes.length < 2) return uniqueNotes[0] || null;
+
+    const bassNote = notesWithPosition.sort((a,b) => a.stringIndex - b.stringIndex)[0].note;
+    
+    let bestGuess = { name: '', score: -1 };
+
+    for (const potentialRoot of uniqueNotes) {
+        const rootIndex = getNoteIndex(potentialRoot);
+        if (rootIndex === -1) continue;
+
+        const intervals = new Set(uniqueNotes.map(note => {
+            const noteIndex = getNoteIndex(note);
+            return (noteIndex - rootIndex + 12) % 12;
+        }));
+
+        for (const [quality, formulaIntervals] of CHORD_FORMULAS.entries()) {
+            const formulaSet = new Set(formulaIntervals);
+            if (formulaSet.size === intervals.size && [...formulaSet].every(i => intervals.has(i))) {
+                let score = 100;
+                score -= quality.length; // Shorter names are better (m vs m7b5)
+                score -= formulaIntervals.length; // Simpler chords are better
+
+                if (potentialRoot === bassNote) {
+                    score += 20; // Big bonus for non-inversions
+                }
+                
+                // TODO: Add scoring based on songKey diatonic relationship
+
+                if (score > bestGuess.score) {
+                    const name = potentialRoot + quality + (potentialRoot !== bassNote ? `/${bassNote}` : '');
+                    bestGuess = { name, score };
+                }
+            }
+        }
+    }
+    
+    // Fallback if no perfect match is found (e.g., for single notes or dyads)
+    if(bestGuess.score === -1 && uniqueNotes.length > 0) {
+        return uniqueNotes[0];
+    }
+    
+    return bestGuess.name || null;
+}
+
+
+// --- Existing exports ---
 
 export const ALL_CHORDS = [
   'A', 'A6', 'A7', 'A7(13)', 'A7(13-)', 'A7b13', 'Aadd9', 'Am', 'Am6', 'Am7', 'Amaj7', 'Amaj9', 'Asus2', 'Asus4', 'Adim', 'Adim7', 'Aaug', 'Am/G',
@@ -239,4 +345,5 @@ export const CHORD_DATA: Record<string, ChordShape> = {
 
     'G#m': { baseFret: 4, positions: [4, 6, 6, 4, 4, 4] },
     'G#m7': { baseFret: 4, positions: [4, 6, 4, 4, 4, 4] },
+    'Dmaj7(V)': { baseFret: 5, positions: ['x', 5, 7, 6, 7, 'x'] }, // Example of a new voicing
 };

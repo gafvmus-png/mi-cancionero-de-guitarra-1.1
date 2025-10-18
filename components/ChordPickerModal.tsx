@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CloseIcon } from './icons';
 import { UI_STRINGS } from '../constants/es';
 import { UserPrefs, ChordShape } from '../types';
+import { getChordNameFromShape } from '../services/chordService';
 
 interface ChordPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectChord: (chord: string, shape?: ChordShape) => void;
   prefs: UserPrefs;
+  songKey?: string;
 }
 
 const notesSharp = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -53,11 +55,22 @@ interface VisualEditorProps {
     onChordChange: (name: string) => void;
     onCanInsert: (can: boolean) => void;
     onShapeUpdate: (shape: ChordShape) => void;
+    prefs: UserPrefs;
+    songKey?: string;
 }
 
-const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert, onShapeUpdate }) => {
+const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert, onShapeUpdate, prefs, songKey }) => {
     const [name, setName] = useState('');
     const [shape, setShape] = useState<ChordShape>(initialCustomShape);
+    const [isNameSuggested, setIsNameSuggested] = useState(true);
+
+    useEffect(() => {
+        const suggestedName = getChordNameFromShape(shape, prefs.notation, songKey);
+        if (isNameSuggested && suggestedName) {
+            setName(suggestedName);
+        }
+    }, [shape, prefs.notation, songKey, isNameSuggested]);
+
 
     useEffect(() => {
       onCanInsert(name.trim() !== '');
@@ -69,13 +82,14 @@ const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert,
     }, [shape, onShapeUpdate]);
 
     const handleFretClick = (string: number, fret: number) => {
+        setIsNameSuggested(true); // Re-enable suggestions on shape change
         setShape(prevShape => {
             const newPositions = [...prevShape.positions];
             const currentFret = newPositions[string];
             const clickedFretAbsolute = fret + prevShape.baseFret - 1;
             
             if (typeof currentFret === 'number' && currentFret === clickedFretAbsolute) {
-                newPositions[string] = 0; // Toggle off -> open
+                 newPositions[string] = 'x'; // Toggle off -> muted
             } else {
                 newPositions[string] = clickedFretAbsolute; // Set fret
             }
@@ -85,6 +99,7 @@ const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert,
     };
 
     const handleStatusClick = (string: number) => {
+        setIsNameSuggested(true);
         setShape(prevShape => {
             const newPositions = [...prevShape.positions];
             const currentStatus = newPositions[string];
@@ -98,6 +113,7 @@ const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert,
     };
     
     const handleBaseFretChange = (delta: number) => {
+        setIsNameSuggested(true);
         setShape(prev => {
             const newBaseFret = Math.max(1, prev.baseFret + delta);
             return { ...prev, baseFret: newBaseFret };
@@ -105,7 +121,9 @@ const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert,
     };
 
     const resetShape = () => {
+        setIsNameSuggested(true);
         setShape(initialCustomShape);
+        setName('');
     };
 
     const FRET_HEIGHT = 22;
@@ -122,7 +140,10 @@ const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert,
                     id="chord-name"
                     type="text"
                     value={name}
-                    onChange={e => setName(e.target.value)}
+                    onChange={e => {
+                        setName(e.target.value);
+                        setIsNameSuggested(false); // User has taken control
+                    }}
                     placeholder={UI_STRINGS.CHORD_NAME_PLACEHOLDER}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
@@ -190,7 +211,7 @@ const VisualEditor: React.FC<VisualEditorProps> = ({ onChordChange, onCanInsert,
 };
 
 
-export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onClose, onSelectChord, prefs }) => {
+export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onClose, onSelectChord, prefs, songKey }) => {
   const [view, setView] = useState<'builder' | 'visual'>('builder');
 
   // State for Quick Builder
@@ -381,7 +402,7 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
             </div>
             
             <div className="p-4 bg-slate-900/50 text-center flex-shrink-0">
-              <span className="font-mono text-3xl font-bold text-white h-10 block">{chordPreview || '...'}</span>
+              <span className="font-mono text-3xl font-bold text-white h-10 block">{chordPreview || '?'}</span>
             </div>
 
             <div className="p-6 overflow-y-auto">
@@ -408,6 +429,8 @@ export const ChordPickerModal: React.FC<ChordPickerModalProps> = ({ isOpen, onCl
                     onChordChange={setCustomChordToInsert} 
                     onCanInsert={setCanInsertCustomChord}
                     onShapeUpdate={(s) => customShapeRef.current = s}
+                    prefs={prefs}
+                    songKey={songKey}
                 />
               )}
             </div>
