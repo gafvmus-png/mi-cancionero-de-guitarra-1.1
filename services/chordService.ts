@@ -88,6 +88,9 @@ const CHORD_FORMULAS = new Map<string, number[]>([
     ['9', [0, 4, 7, 10, 2]],
     ['m9', [0, 3, 7, 10, 2]],
     ['maj9', [0, 4, 7, 11, 2]],
+    ['m(maj7)', [0, 3, 7, 11]],
+    ['maj7(b5)', [0, 4, 6, 11]],
+    ['7sus4', [0, 5, 7, 10]],
 ]);
 
 // Defines the preferred accidental (sharp/flat) for a given key/root.

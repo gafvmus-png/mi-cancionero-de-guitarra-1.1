@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Song, ToastData, UserPrefs, Setlist, ChordShape } from '../types';
-import { transposeChordPro, extractUniqueChords } from '../services/chordproService';
+import { transposeChordPro, extractUniqueChords, parseChordPro } from '../services/chordproService';
 import { Preview } from './Preview';
 import { ChordPickerModal } from './ChordPickerModal';
 import { PerformanceMode } from './PerformanceMode';
@@ -47,6 +47,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   // Main song data
   const [title, setTitle] = useState(song.title);
   const [artist, setArtist] = useState(song.artist);
+  const [songKey, setSongKey] = useState(song.key);
   const [content, setContent] = useState(song.content);
   // Performance settings
   const [bpm, setBpm] = useState(song.bpm || '');
@@ -73,18 +74,19 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   const audioFileRef = useRef<HTMLInputElement>(null);
   const pdfWorkerRef = useRef<Worker | null>(null);
 
-  const debouncedContent = useDebounce(content, 250);
+  const debouncedContent = useDebounce(content, 500);
   
   const isReadOnly = NON_EDITABLE_SONG_IDS.includes(song.id);
 
   const hasChanges = useMemo(() => {
     return title !== song.title || 
-           artist !== song.artist || 
+           artist !== song.artist ||
+           songKey !== song.key ||
            content !== song.content ||
            Number(bpm || 0) !== (song.bpm || 0) ||
            timeSignature !== (song.timeSignature || '4/4') ||
            backingTrackName !== song.backingTrackName;
-  }, [title, artist, content, bpm, timeSignature, backingTrackName, song]);
+  }, [title, artist, songKey, content, bpm, timeSignature, backingTrackName, song]);
 
   const transposedContent = useMemo(
     () => transposeChordPro(content, transposeSteps, prefs.notation),
@@ -101,7 +103,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   }, [content]);
 
   const { chordPaletteChords, isUsingDefaultChords } = useMemo(() => {
-      const chords = extractUniqueChords(content);
+      const chords = extractUniqueChords(content).sort();
       if (chords.length > 0) {
           return { chordPaletteChords: chords, isUsingDefaultChords: false };
       }
@@ -126,18 +128,39 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
 
   const handleSave = useCallback(() => {
     if (isReadOnly) return;
+
+    let updatedContent = content;
+    const keyDirectiveRegex = /\{key:[^}]+\}\r?\n?|\{k:[^}]+\}\r?\n?/i;
+    const newKeyDirective = `{key: ${songKey}}`;
+
+    if (keyDirectiveRegex.test(updatedContent)) {
+      updatedContent = updatedContent.replace(keyDirectiveRegex, newKeyDirective + '\n');
+    } else {
+      updatedContent = newKeyDirective + '\n' + updatedContent.trimLeft();
+    }
+
     const songDataToSave: Song = {
       ...song,
       title,
       artist,
-      content,
+      key: songKey,
+      content: updatedContent,
       bpm: Number(bpm) || undefined,
       timeSignature: timeSignature || undefined,
       backingTrackName: backingTrackName || undefined,
       duration: duration || undefined,
     };
     onSave(songDataToSave);
-  }, [onSave, song, title, artist, content, bpm, timeSignature, backingTrackName, duration, isReadOnly]);
+    setContent(updatedContent); // Sync content state with the updated version
+  }, [onSave, song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, isReadOnly]);
+
+  // Sync state from text content {key: ...} to the UI input
+  useEffect(() => {
+    const parsed = parseChordPro(debouncedContent);
+    if (parsed.key && parsed.key !== songKey) {
+        setSongKey(parsed.key);
+    }
+  }, [debouncedContent]);
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -312,6 +335,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       ...song,
       title,
       artist,
+      key: songKey,
       content,
       bpm: Number(bpm) || undefined,
       timeSignature: timeSignature || undefined,
@@ -333,7 +357,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
         console.error("Failed to export song:", error);
         showToast({ message: UI_STRINGS.TOAST_EXPORT_ERROR, type: 'error' });
     }
-}, [song, title, artist, content, bpm, timeSignature, backingTrackName, duration, showToast]);
+}, [song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, showToast]);
 
   const handleExportToPDF = useCallback(async ({ columns, includeDiagrams }: { columns: 1 | 2, includeDiagrams: boolean }) => {
     if (!content) {
@@ -440,9 +464,9 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
             const chords = new Set();
             let match;
             while ((match = chordRegex.exec(text)) !== null) {
-              chords.add(match[1].split('/')[0]);
+              chords.add(match[1]);
             }
-            return Array.from(chords).sort();
+            return Array.from(chords);
           };
           
           const drawChordDiagramPDF = (pdfInstance, name, shape, x, y) => {
@@ -715,12 +739,13 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
     ...song,
     title,
     artist,
+    key: songKey,
     content,
     bpm: Number(bpm) || undefined,
     timeSignature: timeSignature || undefined,
     backingTrackName,
     duration
-  }), [song, title, artist, content, bpm, timeSignature, backingTrackName, duration]);
+  }), [song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration]);
 
   return (
     <div className="flex flex-col h-full">
@@ -738,27 +763,39 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
         </div>
       )}
       <header className="p-4 border-b border-slate-700 bg-slate-800/50">
-        <div className="flex flex-col md:flex-row gap-4">
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_TITLE && setTitle('')}
-              onBlur={e => e.target.value.trim() === '' && setTitle(UI_STRINGS.NEW_SONG_TITLE)}
-              placeholder={UI_STRINGS.TITLE_PLACEHOLDER}
-              readOnly={isReadOnly}
-              className={`flex-grow px-3 py-2 text-lg font-bold bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
-            />
-            <input
-              type="text"
-              value={artist}
-              onChange={e => setArtist(e.target.value)}
-              onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_ARTIST && setArtist('')}
-              onBlur={e => e.target.value.trim() === '' && setArtist(UI_STRINGS.NEW_SONG_ARTIST)}
-              placeholder={UI_STRINGS.ARTIST_PLACEHOLDER}
-              readOnly={isReadOnly}
-              className={`w-full md:w-1/3 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
-            />
+        <div className="flex flex-col md:flex-row gap-4 items-start">
+            <div className="flex-grow">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_TITLE && setTitle('')}
+                  onBlur={e => e.target.value.trim() === '' && setTitle(UI_STRINGS.NEW_SONG_TITLE)}
+                  placeholder={UI_STRINGS.TITLE_PLACEHOLDER}
+                  readOnly={isReadOnly}
+                  className={`w-full px-3 py-2 text-lg font-bold bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
+                />
+            </div>
+            <div className="w-full md:w-auto flex gap-4">
+                <input
+                  type="text"
+                  value={artist}
+                  onChange={e => setArtist(e.target.value)}
+                  onFocus={e => e.target.value === UI_STRINGS.NEW_SONG_ARTIST && setArtist('')}
+                  onBlur={e => e.target.value.trim() === '' && setArtist(UI_STRINGS.NEW_SONG_ARTIST)}
+                  placeholder={UI_STRINGS.ARTIST_PLACEHOLDER}
+                  readOnly={isReadOnly}
+                  className={`w-full md:w-48 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 ${isReadOnly ? 'cursor-default' : ''}`}
+                />
+                <input
+                  type="text"
+                  value={songKey}
+                  onChange={e => setSongKey(e.target.value)}
+                  placeholder={UI_STRINGS.KEY_PLACEHOLDER}
+                  readOnly={isReadOnly}
+                  className={`w-24 px-3 py-2 bg-transparent border-b-2 border-slate-600 focus:outline-none focus:border-sky-400 font-semibold ${isReadOnly ? 'cursor-default' : ''}`}
+                />
+            </div>
         </div>
       </header>
       
@@ -879,7 +916,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
           </div>
         </div>
       </div>
-      <ChordPickerModal isOpen={isChordPickerOpen} onClose={() => setChordPickerOpen(false)} onSelectChord={handleInsertChord} prefs={prefs} songKey={song.key} />
+      <ChordPickerModal isOpen={isChordPickerOpen} onClose={() => setChordPickerOpen(false)} onSelectChord={handleInsertChord} prefs={prefs} songKey={songKey} />
       <PDFExportModal isOpen={isPDFModalOpen} onClose={() => setPDFModalOpen(false)} onExport={handleExportToPDF}/>
       {isPerformanceMode && (<PerformanceMode song={currentSongStateForPerformanceMode} onClose={() => setPerformanceMode(false)}/>)}
     </div>

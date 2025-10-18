@@ -5,7 +5,7 @@ import { Editor } from './components/Editor';
 import { Welcome } from './components/Welcome';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Toast } from './components/Toast';
-import { PlusIcon, MoreVerticalIcon, ExportIcon, ImportIcon, ClipboardListIcon, MusicIcon, FileTextIcon } from './components/icons';
+import { PlusIcon, MoreVerticalIcon, ExportIcon, ImportIcon, ClipboardListIcon, MusicIcon, FileTextIcon, RotateCcwIcon } from './components/icons';
 import { UI_STRINGS } from './constants/es';
 import { AnimatePresence, motion } from 'framer-motion';
 import { SetlistList } from './components/SetlistList';
@@ -145,6 +145,7 @@ const App: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [songsToImport, setSongsToImport] = useState<Song[] | null>(null);
   const [setlistsToImport, setSetlistsToImport] = useState<Setlist[] | null>(null);
+  const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
 
   const importSongFileRef = useRef<HTMLInputElement>(null);
   const importSetlistFileRef = useRef<HTMLInputElement>(null);
@@ -510,6 +511,11 @@ const App: React.FC = () => {
     setSetlistsToImport(null);
   }, [setlistsToImport, setlists]);
 
+  // --- App Update ---
+  const confirmUpdateApp = useCallback(() => {
+    window.location.reload();
+  }, []);
+
   // --- Navigation ---
   const handleSelectSong = (id: string) => {
     setActiveView('songs');
@@ -598,6 +604,12 @@ const App: React.FC = () => {
                    <li role="menuitem">
                     <button onClick={handleExportSetlists} className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 transition-colors">
                       <ExportIcon/> {UI_STRINGS.EXPORT_SETLISTS_BUTTON}
+                    </button>
+                  </li>
+                  <li className="my-1 border-t border-slate-700"></li>
+                  <li role="menuitem">
+                    <button onClick={() => { setIsUpdateConfirmOpen(true); setIsMenuOpen(false); }} className="w-full text-left flex items-center gap-3 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700 transition-colors">
+                      <RotateCcwIcon/> {UI_STRINGS.UPDATE_APP_BUTTON}
                     </button>
                   </li>
                 </ul>
@@ -694,6 +706,15 @@ const App: React.FC = () => {
         title={UI_STRINGS.IMPORT_SETLISTS_CONFIRM_TITLE}
         message={UI_STRINGS.IMPORT_SETLISTS_CONFIRM_MESSAGE}
         confirmButtonText={UI_STRINGS.IMPORT_BUTTON}
+        confirmButtonClass="bg-sky-600 hover:bg-sky-500"
+      />
+      <ConfirmModal
+        isOpen={isUpdateConfirmOpen}
+        onClose={() => setIsUpdateConfirmOpen(false)}
+        onConfirm={confirmUpdateApp}
+        title={UI_STRINGS.UPDATE_CONFIRM_TITLE}
+        message={UI_STRINGS.UPDATE_CONFIRM_MESSAGE}
+        confirmButtonText={UI_STRINGS.UPDATE_BUTTON}
         confirmButtonClass="bg-sky-600 hover:bg-sky-500"
       />
       <Toast

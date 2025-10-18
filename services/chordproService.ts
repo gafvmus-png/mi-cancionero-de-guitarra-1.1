@@ -58,13 +58,15 @@ export const parseChordPro = (text: string): ParsedSong => {
           break;
         case 'comment':
         case 'c':
-          const capoNumFromC = parseInt(value, 10);
-          if (key === 'c' && !isNaN(capoNumFromC) && value.match(/^\d+\s*$/)) {
-            parsedSong.capo = capoNumFromC;
-          } else {
+            if (value.match(/^\d+\s*$/)) { // Check if it's just a number, likely a capo
+              const capoNumFromC = parseInt(value, 10);
+              if (!isNaN(capoNumFromC)) {
+                parsedSong.capo = capoNumFromC;
+                break;
+              }
+            }
             parsedSong.lines.push({ type: 'comment', text: value });
-          }
-          break;
+            break;
       }
       continue;
     }
@@ -142,5 +144,5 @@ export const extractUniqueChords = (text: string): string[] => {
   while ((match = chordRegex.exec(text)) !== null) {
     chords.add(match[1]);
   }
-  return Array.from(chords).sort();
+  return Array.from(chords);
 };
