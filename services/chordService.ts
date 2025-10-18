@@ -187,7 +187,7 @@ export const ALL_CHORDS = [
   'F', 'F6', 'F6(9)', 'F7', 'F7(13)', 'F13', 'F6/9', 'Fm', 'Fm7', 'Fmaj7', 'Fsus2', 'Fsus4', 'Fdim', 'Fdim7', 'Faug',
   'F#', 'F#7', 'F#7/C#', 'F#m', 'F#m7', 'F#m7b5', 'F#dim7',
   'Gb', 'Gb7', 'Gbmaj7',
-  'G', 'G6', 'G7', 'G13', 'Gadd9', 'Gm', 'Gm7', 'Gmaj7', 'Gsus2', 'Gsus4', 'Gdim', 'Gdim7', 'Gaug', 'G/B', 'G/D',
+  'G', 'G6', 'G7', 'G13', 'Gadd9', 'Gm', 'Gm7', 'Gmaj7', 'Gsus2', 'Gsus4', 'Gdim', 'Gdim7', 'Gaug', 'G/B', 'G/D', 'Gm7/Bb',
   'G#m', 'G#m7'
 ].sort();
 
@@ -348,6 +348,7 @@ export const CHORD_DATA: Record<string, ChordShape> = {
     'Gadd9': { baseFret: 1, positions: [3, 2, 0, 2, 0, 3] },
     'Gm': { baseFret: 3, positions: [3, 5, 5, 3, 3, 3] },
     'Gm7': { baseFret: 3, positions: [3, 5, 3, 3, 3, 3] },
+    'Gm7/Bb': { baseFret: 5, positions: [6, 'x', 5, 7, 6, 'x'] },
     'Gmaj7': { baseFret: 1, positions: [3, 2, 0, 0, 0, 2] },
     'Gsus2': { baseFret: 1, positions: [3, 0, 0, 0, 3, 3] },
     'Gsus4': { baseFret: 1, positions: [3, 3, 0, 0, 1, 3] },
