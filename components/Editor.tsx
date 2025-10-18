@@ -607,8 +607,8 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                 const LYRIC_Y_OFFSET = y + FS_BODY;
 
                 const lineBreak = () => {
-                    y += LINE_HEIGHT_BODY * 1.5;
-                    checkPageBreak(LINE_HEIGHT_BODY * 1.5);
+                    y += LINE_HEIGHT_BODY * 1.8;
+                    checkPageBreak(LINE_HEIGHT_BODY * 1.8);
                     currentX = x;
                 };
 
@@ -647,13 +647,23 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                     
                     currentX += segmentWidth;
                 }
-                y += LINE_HEIGHT_BODY * 1.5;
+                y += LINE_HEIGHT_BODY * 1.8;
             }
           }
           
           // --- DIAGRAMS ---
-          const availableChords = extractUniqueChords(content).filter(c => ALL_CHORD_DATA[c.split('/')[0]]);
-          if (includeDiagrams && availableChords.length > 0) {
+          const allUniqueChords = extractUniqueChords(content);
+          const chordsWithDiagrams = allUniqueChords.map(name => {
+              let shape = ALL_CHORD_DATA[name];
+              // Fallback for slash chords where only the base is defined (e.g., C/G -> use C shape)
+              if (!shape) {
+                  const baseName = name.split('/')[0];
+                  shape = ALL_CHORD_DATA[baseName];
+              }
+              return shape ? { name, shape } : null;
+          }).filter(item => item !== null);
+
+          if (includeDiagrams && chordsWithDiagrams.length > 0) {
               y += 10;
               checkPageBreak(80);
               pdf.setFont('helvetica', 'bold');
@@ -666,18 +676,15 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
               const diagramsPerLine = Math.max(1, Math.floor(colWidth / diagramBlockWidth));
               let diagramCountInLine = 0;
 
-              for (const chordName of availableChords) {
-                  const baseChordName = chordName.split('/')[0];
-                  if (ALL_CHORD_DATA[baseChordName]) {
-                      if (diagramCountInLine >= diagramsPerLine) {
-                          y += diagramBlockHeight;
-                          diagramCountInLine = 0;
-                      }
-                      checkPageBreak(diagramBlockHeight);
-                      const currentX = x + (diagramCountInLine * diagramBlockWidth);
-                      drawChordDiagramPDF(pdf, chordName, ALL_CHORD_DATA[baseChordName], currentX, y);
-                      diagramCountInLine++;
+              for (const { name, shape } of chordsWithDiagrams) {
+                  if (diagramCountInLine >= diagramsPerLine) {
+                      y += diagramBlockHeight;
+                      diagramCountInLine = 0;
                   }
+                  checkPageBreak(diagramBlockHeight);
+                  const currentX = x + (diagramCountInLine * diagramBlockWidth);
+                  drawChordDiagramPDF(pdf, name, shape, currentX, y);
+                  diagramCountInLine++;
               }
             }
           
