@@ -12,6 +12,7 @@ export interface Song {
   // backingTrack (base64) se elimina para usar IndexedDB
   backingTrackName?: string;
   duration?: number; // en segundos
+  customChords?: Record<string, ChordShape>;
 }
 
 export interface Setlist {

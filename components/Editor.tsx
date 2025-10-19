@@ -58,7 +58,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
   const [backingTrackName, setBackingTrackName] = useState(song.backingTrackName);
   const [duration, setDuration] = useState(song.duration);
   // Custom user data
-  const [customChords, setCustomChords] = useState<Record<string, ChordShape>>({});
+  const [customChords, setCustomChords] = useState<Record<string, ChordShape>>(song.customChords || {});
 
   // UI State
   const [isChordPickerOpen, setChordPickerOpen] = useState(false);
@@ -88,8 +88,9 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
            content !== song.content ||
            Number(bpm || 0) !== (song.bpm || 0) ||
            timeSignature !== (song.timeSignature || '4/4') ||
-           backingTrackName !== song.backingTrackName;
-  }, [title, artist, songKey, content, bpm, timeSignature, backingTrackName, song]);
+           backingTrackName !== song.backingTrackName ||
+           JSON.stringify(customChords) !== JSON.stringify(song.customChords || {});
+  }, [title, artist, songKey, content, bpm, timeSignature, backingTrackName, song, customChords]);
 
   const transposedContent = useMemo(
     () => transposeChordPro(content, transposeSteps, prefs.notation),
@@ -152,10 +153,11 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       timeSignature: timeSignature || undefined,
       backingTrackName: backingTrackName || undefined,
       duration: duration || undefined,
+      customChords: Object.keys(customChords).length > 0 ? customChords : undefined,
     };
     onSave(songDataToSave);
     setContent(updatedContent); // Sync content state with the updated version
-  }, [onSave, song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, isReadOnly]);
+  }, [onSave, song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, isReadOnly, customChords]);
 
   // Sync state from text content {key: ...} to the UI input
   useEffect(() => {
@@ -305,7 +307,18 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
             audio.onloadedmetadata = () => {
                 setDuration(audio.duration);
                 // Auto-save metadata when a new track is successfully uploaded
-                const songDataToSave: Song = { ...song, title, artist, content, backingTrackName: file.name, duration: audio.duration };
+                const songDataToSave: Song = {
+                    ...song,
+                    title,
+                    artist,
+                    key: songKey,
+                    content,
+                    bpm: Number(bpm) || undefined,
+                    timeSignature: timeSignature || undefined,
+                    backingTrackName: file.name,
+                    duration: audio.duration,
+                    customChords: Object.keys(customChords).length > 0 ? customChords : undefined,
+                };
                 onSave(songDataToSave);
             };
         } catch (error) {
@@ -326,7 +339,18 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
             audioFileRef.current.value = '';
         }
         // Auto-save metadata when a track is removed
-        const songDataToSave: Song = { ...song, title, artist, content, backingTrackName: undefined, duration: undefined };
+        const songDataToSave: Song = {
+            ...song,
+            title,
+            artist,
+            key: songKey,
+            content,
+            bpm: Number(bpm) || undefined,
+            timeSignature: timeSignature || undefined,
+            backingTrackName: undefined,
+            duration: undefined,
+            customChords: Object.keys(customChords).length > 0 ? customChords : undefined,
+        };
         onSave(songDataToSave);
     } catch (error) {
         console.error(error);
@@ -345,6 +369,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
       timeSignature: timeSignature || undefined,
       backingTrackName: backingTrackName || undefined,
       duration: duration || undefined,
+      customChords: Object.keys(customChords).length > 0 ? customChords : undefined,
     };
     
     try {
@@ -361,7 +386,7 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
         console.error("Failed to export song:", error);
         showToast({ message: UI_STRINGS.TOAST_EXPORT_ERROR, type: 'error' });
     }
-}, [song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, showToast]);
+}, [song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, showToast, customChords]);
 
   const handleExportToPDF = useCallback(async ({ columns, includeDiagrams }: { columns: 1 | 2, includeDiagrams: boolean }) => {
     if (!content) {
@@ -756,8 +781,9 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
     bpm: Number(bpm) || undefined,
     timeSignature: timeSignature || undefined,
     backingTrackName,
-    duration
-  }), [song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration]);
+    duration,
+    customChords,
+  }), [song, title, artist, songKey, content, bpm, timeSignature, backingTrackName, duration, customChords]);
 
   return (
     <div className="flex flex-col h-full">
