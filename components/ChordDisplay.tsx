@@ -19,7 +19,14 @@ export const ChordDisplay: React.FC<ChordDisplayProps> = ({ chords, customChords
       <h3 className="text-lg font-semibold mb-4 text-sky-400 border-b border-slate-700 pb-2">{UI_STRINGS.CHORDS_TITLE}</h3>
       <div className="grid grid-cols-4 sm:grid-cols-5 gap-y-4 gap-x-2">
         {chords.map(chordName => {
-          const shape = customChords?.[chordName] || CHORD_DATA[chordName];
+          let shape = customChords?.[chordName] || CHORD_DATA[chordName];
+          
+          // If no direct match, try to find a diagram for the base of a slash chord (e.g., show 'G' for 'G/B')
+          if (!shape && chordName.includes('/')) {
+            const baseChordName = chordName.split('/')[0];
+            shape = customChords?.[baseChordName] || CHORD_DATA[baseChordName];
+          }
+
           if (shape) {
             return <ChordDiagram key={chordName} name={chordName} shape={shape} />;
           }
