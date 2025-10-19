@@ -52,7 +52,7 @@ export const UI_STRINGS = {
   UNSAVED_CHANGES_WARNING: "Tienes cambios sin guardar. ¿Estás seguro de que quieres salir?",
   CHORD_PALETTE_TITLE: "Acordes en la Canción",
   COMMON_CHORDS_TITLE: "Acordes Comunes",
-  READ_ONLY_SONG_INFO: "Esta es una canción de ejemplo y no se puede editar.",
+  READ_ONLY_SONG_INFO: "Este es un elemento de ejemplo y no se puede editar.",
 
   // Song Settings in Editor
   SONG_SETTINGS_TITLE: "Ajustes de Interpretación",
