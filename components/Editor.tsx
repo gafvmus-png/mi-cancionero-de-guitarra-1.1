@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Song, ToastData, UserPrefs, Setlist, ChordShape } from '../types';
 import { transposeChordPro, extractUniqueChords, parseChordPro } from '../services/chordproService';
@@ -638,20 +639,33 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                     currentX = x;
                 };
 
-                for (const segment of line.segments) {
+                for (let i = 0; i < line.segments.length; i++) {
+                    const segment = line.segments[i];
                     const chord = segment.chord || '';
                     const lyric = segment.lyric || '';
                     const isBold = segment.isBold || false;
                     
+                    const isCurrentChordOnly = segment.chord && (!segment.lyric || segment.lyric.trim() === '');
+                    let separator = '';
+                    if (isCurrentChordOnly && i + 1 < line.segments.length) {
+                        const nextSegment = line.segments[i+1];
+                        const isNextChordOnly = nextSegment.chord && (!nextSegment.lyric || nextSegment.lyric.trim() === '');
+                        if (isNextChordOnly) {
+                            separator = ' -';
+                        }
+                    }
+                    
+                    const finalChordText = chord + separator;
+                    
                     pdf.setFont('helvetica', 'bold');
                     pdf.setFontSize(FS_BODY);
-                    const chordWidth = pdf.getStringUnitWidth(chord) * FS_BODY / pdf.internal.scaleFactor;
+                    const chordWidth = pdf.getStringUnitWidth(finalChordText) * FS_BODY / pdf.internal.scaleFactor;
                     
                     pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
                     pdf.setFontSize(FS_BODY);
                     const lyricWidth = pdf.getStringUnitWidth(lyric) * FS_BODY / pdf.internal.scaleFactor;
                     
-                    const segmentWidth = Math.max(chordWidth, lyricWidth) + (lyric.endsWith(' ') ? 0 : 2);
+                    const segmentWidth = Math.max(chordWidth, isCurrentChordOnly ? 0 : lyricWidth) + (lyric.endsWith(' ') ? 0 : 2);
                     
                     if (currentX > x && currentX + segmentWidth > x + colWidth) {
                         lineBreak();
@@ -661,10 +675,10 @@ export const Editor: React.FC<EditorProps> = ({ song, onSave, showToast, prefs, 
                         pdf.setFont('helvetica', 'bold');
                         pdf.setFontSize(FS_BODY);
                         pdf.setTextColor(COLOR_CHORD);
-                        pdf.text(chord, currentX, CHORD_Y_OFFSET);
+                        pdf.text(finalChordText, currentX, CHORD_Y_OFFSET);
                     }
                     
-                    if (lyric) {
+                    if (lyric && !isCurrentChordOnly) {
                         pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
                         pdf.setFontSize(FS_BODY);
                         pdf.setTextColor(COLOR_TEXT);
